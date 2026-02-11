@@ -2,7 +2,6 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const mineflayer = require('mineflayer');
-
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
@@ -10,44 +9,53 @@ const io = new Server(server);
 app.use(express.static('public'));
 
 let bot;
+let aiEnabled = false;
+let autoSprint = false;
+let skinUrl = ""; 
 const password = "generationedpassword";
 
 io.on('connection', (socket) => {
-    socket.emit('log', 'Connected to Panel');
-
     socket.on('startBot', (data) => {
         if (bot) bot.quit();
-        socket.emit('log', `Joining ${data.host} as ${data.username}...`);
+        skinUrl = data.skinUrl; // Received from frontend
 
-        bot = mineflayer.createBot({
-            host: data.host,
-            username: data.username,
-            version: '1.8.8'
+        bot = mineflayer.createBot({ host: data.host, username: data.username, version: '1.8.8' });
+
+        bot.on('spawn', () => {
+            socket.emit('log', '✔ Bot Connected!');
+            // Apply skin if a URL was provided
+            if (skinUrl) {
+                bot.chat(`/skin ${skinUrl}`);
+                socket.emit('log', 'Applied custom skin via /skin command.');
+            }
         });
 
-        bot.on('spawn', () => socket.emit('log', '✔ Bot is in the server!'));
+        // Auto-Sprint Logic
+        bot.on('move', () => {
+            if (autoSprint && bot.controlState.forward) {
+                bot.setControlState('sprint', true);
+            }
+        });
 
         bot.on('messagestr', (msg) => {
             socket.emit('log', `[CHAT] ${msg}`);
-            // Auth Logic
             if (msg.includes('/register')) bot.chat(`/register ${password} ${password}`);
             if (msg.includes('/login')) bot.chat(`/login ${password}`);
         });
 
-        bot.on('error', (err) => socket.emit('log', `⚠ Error: ${err.message}`));
-        bot.on('kicked', (reason) => socket.emit('log', `❌ Kicked: ${reason}`));
-    });
+        // Toggles
+        socket.on('toggleSprint', (val) => { 
+            autoSprint = val; 
+            bot.setControlState('sprint', val);
+        });
+        
+        socket.on('toggleCrouch', (val) => { 
+            bot.setControlState('sneak', val); 
+        });
 
-    socket.on('sendChat', (text) => { if (bot) bot.chat(text); });
-
-    socket.on('move', (dir) => {
-        if (!bot) return;
-        bot.setControlState(dir, true);
-        setTimeout(() => bot.setControlState(dir, false), 500);
-        socket.emit('log', `Moving ${dir}`);
+        socket.on('control', (data) => { if (bot) bot.setControlState(data.key, data.state); });
+        socket.on('disconnectBot', () => { if (bot) bot.quit(); });
     });
 });
 
-server.listen(3000, '0.0.0.0', () => {
-    console.log('Bot Dashboard is LIVE on port 3000');
-});
+server.listen(8080, '0.0.0.0', () => console.log('Advanced Dashboard LIVE'));
