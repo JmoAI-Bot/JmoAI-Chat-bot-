@@ -16,60 +16,57 @@ let bot;
 const password = "generationedpassword";
 
 io.on('connection', (socket) => {
-    // Fix for the "MaxListeners" warning
-    socket.setMaxListeners(100);
+    socket.setMaxListeners(0); // Kill the "Memory Leak" warning for good
 
     socket.on('startBot', (data) => {
-        if (bot) { bot.quit(); socket.emit('log', 'Restarting...'); }
+        if (bot) {
+            bot.quit();
+            socket.emit('log', '🔄 Rebooting system...');
+        }
 
         bot = mineflayer.createBot({
             host: data.host || 'mc.sealcentral.co',
             username: data.username || 'JmoAI',
-            version: '1.8.8'
+            version: '1.8.8',
+            hideErrors: true // Stop the console from screaming if connection drops
         });
 
         bot.on('spawn', () => {
-            socket.emit('log', '✔ SPAWNED: Camera on :3001, Inv on :3002');
+            socket.emit('log', '✔ NEURAL LINK ESTABLISHED');
             try {
                 mineflayerViewer(bot, { port: 3001, firstPerson: true });
                 inventoryViewer(bot, { port: 3002 });
-            } catch(e) { console.log("Viewers already running or port busy"); }
+            } catch(e) { /* Ignore if ports are busy */ }
         });
 
         bot.on('messagestr', (msg) => {
-            socket.emit('log', `[CHAT] ${msg}`);
+            socket.emit('log', `[MSG] ${msg}`);
             if (msg.includes('/register')) bot.chat(`/register ${password} ${password}`);
             if (msg.includes('/login')) bot.chat(`/login ${password}`);
         });
 
-        // --- Controls ---
-        socket.on('control', (d) => { if(bot) bot.setControlState(d.key, d.state); });
-        
-        socket.on('look', (d) => { if(bot) bot.look(d.yaw, d.pitch); });
-
+        // --- Interaction Logic ---
         socket.on('interact', (type) => {
             if(!bot) return;
             const block = bot.blockAtCursor(5);
-            if (!block) return socket.emit('log', 'No block in range');
+            if (!block) return socket.emit('log', '⚠ Target out of range');
             
             if (type === 'break') {
-                bot.dig(block, (err) => { if(err) socket.emit('log', 'Dig error: ' + err); });
-            } else if (type === 'place') {
-                const item = bot.inventory.items()[0];
-                if (item) bot.placeBlock(block, v(0, 1, 0)).catch(e => {});
+                bot.dig(block).catch(e => socket.emit('log', 'Mining failed.'));
             } else {
-                bot.activateBlock(block); // For Crafting Tables/Chests
+                bot.activateBlock(block).catch(e => socket.emit('log', 'Interaction failed.'));
             }
         });
 
-        socket.on('lookNearest', () => {
-            const p = bot.nearestEntity(e => e.type === 'player');
-            if (p) bot.lookAt(p.position.offset(0, 1.6, 0));
-        });
-
+        socket.on('look', (d) => { if(bot && bot.entity) bot.look(d.yaw, d.pitch); });
+        socket.on('control', (d) => { if(bot) bot.setControlState(d.key, d.state); });
         socket.on('sendChat', (t) => { if(bot) bot.chat(t); });
         socket.on('disconnectBot', () => { if(bot) bot.quit(); });
+        
+        bot.on('error', (err) => socket.emit('log', `⚠ System Error: ${err.code}`));
+        bot.on('kicked', (reason) => socket.emit('log', `❌ Kicked: ${reason}`));
     });
 });
 
-server.listen(8080, '0.0.0.0', () => console.log('MASTER TERMINAL LIVE ON 8080'));
+// Port 8080 for the dashboard
+server.listen(8080, '0.0.0.0', () => console.log('LINK READY: PORT 8080'));
