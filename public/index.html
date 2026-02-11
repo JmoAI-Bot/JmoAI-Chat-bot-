@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>EaglerBot UI</title>
+    <style>
+        body { background: #0f0f0f; color: #00ff41; font-family: 'Courier New', monospace; padding: 20px; }
+        #log { height: 300px; overflow-y: auto; border: 1px solid #00ff41; padding: 10px; background: #000; margin: 10px 0; }
+        input { background: #222; color: #00ff41; border: 1px solid #00ff41; padding: 8px; width: 200px; }
+        button { background: #00ff41; color: #000; border: none; padding: 8px 15px; cursor: pointer; font-weight: bold; }
+        .controls { margin-top: 15px; }
+    </style>
+</head>
+<body>
+    <h2>BOT TERMINAL</h2>
+    <input id="host" value="mc.sealcentral.co">
+    <input id="user" value="JmoAI">
+    <button onclick="start()">CONNECT</button>
+
+    <div id="log"></div>
+
+    <input id="chatMsg" placeholder="Type chat...">
+    <button onclick="send()">SEND</button>
+
+    <div class="controls">
+        <button onclick="move('forward')">W</button><br>
+        <button onclick="move('left')">A</button>
+        <button onclick="move('back')">S</button>
+        <button onclick="move('right')">D</button>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        const logDiv = document.getElementById('log');
+
+        function start() {
+            socket.emit('startBot', {
+                host: document.getElementById('host').value,
+                username: document.getElementById('user').value
+            });
+        }
+        function send() { socket.emit('sendChat', document.getElementById('chatMsg').value); }
+        function move(dir) { socket.emit('move', dir); }
+
+        socket.on('log', (msg) => {
+            logDiv.innerHTML += `<div>> ${msg}</div>`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        });
+    </script>
+</body>
+</html>
