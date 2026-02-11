@@ -1,50 +1,79 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>EaglerBot UI</title>
+    <title>JmoAI Pro Terminal</title>
     <style>
-        body { background: #0f0f0f; color: #00ff41; font-family: 'Courier New', monospace; padding: 20px; }
-        #log { height: 300px; overflow-y: auto; border: 1px solid #00ff41; padding: 10px; background: #000; margin: 10px 0; }
-        input { background: #222; color: #00ff41; border: 1px solid #00ff41; padding: 8px; width: 200px; }
-        button { background: #00ff41; color: #000; border: none; padding: 8px 15px; cursor: pointer; font-weight: bold; }
-        .controls { margin-top: 15px; }
+        body { background: #050505; color: #00ff41; font-family: 'Courier New', monospace; display: flex; padding: 20px; gap: 20px; }
+        .panel { border: 2px solid #00ff41; padding: 20px; background: #000; flex: 2; box-shadow: 0 0 15px #00ff41; }
+        #log { height: 350px; overflow-y: auto; background: #080808; padding: 10px; border: 1px solid #111; margin-bottom: 15px; }
+        .btn { background: #00ff41; color: #000; border: none; padding: 10px 20px; cursor: pointer; font-weight: bold; margin-bottom: 5px; }
+        .btn:active { background: #008f25; }
+        .btn-red { background: #ff4141; color: white; }
+        .skin-preview { width: 100px; height: 100px; border: 1px solid #333; margin-top: 10px; background-size: contain; background-repeat: no-repeat; }
     </style>
 </head>
 <body>
-    <h2>BOT TERMINAL</h2>
-    <input id="host" value="mc.sealcentral.co">
-    <input id="user" value="JmoAI">
-    <button onclick="start()">CONNECT</button>
+    <div class="panel">
+        <h2>> JMO_AI_ADVANCED_v3</h2>
+        <div id="log"></div>
+        
+        <input id="user" value="JmoAI"> 
+        <button class="btn" onclick="start()">INITIATE JOIN</button>
+        <button class="btn btn-red" onclick="stop()">KILL CONNECTION</button>
+        
+        <div style="margin-top:20px; display: flex; gap: 15px;">
+            <label><input type="checkbox" onchange="socket.emit('toggleSprint', this.checked)"> AUTO-SPRINT</label>
+            <label><input type="checkbox" onchange="socket.emit('toggleCrouch', this.checked)"> TOGGLE CROUCH</label>
+        </div>
+        <hr style="border: 1px solid #111; margin: 20px 0;">
+        <input id="chatBox" style="width:70%;" placeholder="Execute chat command...">
+        <button class="btn" onclick="send()">SEND</button>
+    </div>
 
-    <div id="log"></div>
-
-    <input id="chatMsg" placeholder="Type chat...">
-    <button onclick="send()">SEND</button>
-
-    <div class="controls">
-        <button onclick="move('forward')">W</button><br>
-        <button onclick="move('left')">A</button>
-        <button onclick="move('back')">S</button>
-        <button onclick="move('right')">D</button>
+    <div class="panel" style="flex: 1;">
+        <h3>SKIN_SELECTOR</h3>
+        <p style="font-size: 10px;">Upload a .png skin file</p>
+        <input type="file" id="skinFile" accept="image/png" onchange="previewSkin(this)">
+        <div id="skinPrev" class="skin-preview"></div>
+        <p id="statusText" style="font-size: 10px; color: #888;">No skin selected.</p>
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io();
-        const logDiv = document.getElementById('log');
+        let currentSkinUrl = "";
+
+        // Simplified Skin Upload (Uses a placeholder logic; real Eaglercraft usually needs a direct URL)
+        function previewSkin(input) {
+            const file = input.files[0];
+            if (file) {
+                document.getElementById('statusText').innerText = "Skin Loaded (Ready to Join)";
+                const reader = new FileReader();
+                reader.onload = (e) => document.getElementById('skinPrev').style.backgroundImage = `url(${e.target.result})`;
+                reader.readAsDataURL(file);
+                // Note: In a real scenario, you'd upload this to an image host to get a public URL
+                currentSkinUrl = "https://i.imgur.com"; // Placeholder
+            }
+        }
 
         function start() {
             socket.emit('startBot', {
-                host: document.getElementById('host').value,
-                username: document.getElementById('user').value
+                host: 'mc.sealcentral.co',
+                username: document.getElementById('user').value,
+                skinUrl: currentSkinUrl
             });
         }
-        function send() { socket.emit('sendChat', document.getElementById('chatMsg').value); }
-        function move(dir) { socket.emit('move', dir); }
+        
+        function stop() { socket.emit('disconnectBot'); }
 
-        socket.on('log', (msg) => {
-            logDiv.innerHTML += `<div>> ${msg}</div>`;
-            logDiv.scrollTop = logDiv.scrollHeight;
+        const keys = { 'w': 'forward', 's': 'back', 'a': 'left', 'd': 'right', ' ': 'jump' };
+        window.addEventListener('keydown', (e) => { if(keys[e.key]) socket.emit('control', { key: keys[e.key], state: true }); });
+        window.addEventListener('keyup', (e) => { if(keys[e.key]) socket.emit('control', { key: keys[e.key], state: false }); });
+
+        socket.on('log', m => { 
+            const l=document.getElementById('log'); 
+            l.innerHTML += `<div>[SYSTEM]: ${m}</div>`; 
+            l.scrollTop = l.scrollHeight; 
         });
     </script>
 </body>
