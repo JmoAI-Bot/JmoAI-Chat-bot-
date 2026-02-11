@@ -6,44 +6,49 @@ const { mineflayer: mineflayerViewer } = require('prismarine-viewer');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, { transports: ['polling'] }); // Bypass WebSocket blocks
+const io = new Server(server, { transports: ['polling'] });
 
 app.use(express.static('public'));
 
 let bot;
-let viewerActive = false;
+let vStarted = false;
+const PASS = "testificate";
 
 io.on('connection', (socket) => {
-    socket.on('startBot', (data) => {
+    socket.on('start', (data) => {
         if (bot) bot.quit();
-
-        bot = mineflayer.createBot({
-            host: data.host,
-            username: data.username,
-            version: '1.8.8',
-            hideErrors: true
-        });
+        bot = mineflayer.createBot({ host: data.h, username: data.u, version: '1.8.8', hideErrors: true });
 
         bot.on('spawn', () => {
-            socket.emit('log', 'Link Secure.');
-            if (!viewerActive) {
-                try {
-                    mineflayerViewer(bot, { port: 3001, firstPerson: true });
-                    viewerActive = true;
-                } catch(e) {}
+            socket.emit('log', 'Link: Established.');
+            if (!vStarted) {
+                try { mineflayerViewer(bot, { port: 3001, firstPerson: true }); vStarted = true; } catch(e) {}
             }
         });
 
-        // Chat listener
-        bot.on('messagestr', (m) => socket.emit('log', m));
+        bot.on('messagestr', (m) => {
+            socket.emit('log', m);
+            const low = m.toLowerCase();
+            if (low.includes('/register')) bot.chat(`/register ${PASS} ${PASS}`);
+            else if (low.includes('/login')) bot.chat(`/login ${PASS}`);
+        });
 
-        // Interaction socket listeners
-        socket.on('sendChat', (t) => { if(bot) bot.chat(t); });
-        socket.on('look', (d) => { if(bot?.entity) bot.look(d.yaw, d.pitch); });
-        socket.on('control', (d) => { if(bot) bot.setControlState(d.key, d.state); });
+        socket.on('msg', t => { if(bot) bot.chat(t); });
+        socket.on('move', d => { if(bot) bot.setControlState(d.k, d.s); });
+        socket.on('leave', () => { if(bot) bot.quit(); socket.emit('log', 'Link Terminated.'); });
         
-        bot.on('error', (err) => console.log('Relay error:', err.code));
+        socket.on('click', (type) => {
+            if (!bot) return;
+            const b = bot.blockAtCursor(5);
+            if (type === 'primary') {
+                if (bot.targetEntity) bot.attack(bot.targetEntity);
+                else if (b) bot.dig(b).catch(() => {});
+            } else {
+                if (b) bot.activateBlock(b).catch(() => {});
+                else bot.activateItem();
+            }
+        });
     });
 });
 
-server.listen(8080, '0.0.0.0', () => console.log('Station Active.'));
+server.listen(8080, '0.0.0.0', () => console.log('Station Online'));

@@ -2,71 +2,92 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Climate Data | NOAA GCOS Portal</title>
+    <title>Satellite Data | Station Observation Portal</title>
     <style>
-        body { background: #0b0f19; color: #94a3b8; font-family: 'Courier New', monospace; margin: 0; overflow: hidden; height: 100vh; display: flex; flex-direction: column; }
-        header { background: #1e293b; padding: 10px 20px; border-bottom: 2px solid #38bdf8; display: flex; justify-content: space-between; }
-        .grid { display: grid; grid-template-columns: 2fr 1fr; flex-grow: 1; gap: 10px; padding: 10px; }
-        .panel { background: #111827; border: 1px solid #334155; border-radius: 4px; overflow: hidden; display: flex; flex-direction: column; }
-        iframe { width: 100%; height: 100%; border: none; background: #000; }
-        #log { flex-grow: 1; padding: 10px; font-size: 11px; overflow-y: auto; color: #22c55e; }
-        .controls { padding: 15px; background: #1e293b; display: flex; gap: 10px; border-top: 1px solid #334155; }
-        input { background: #0f172a; border: 1px solid #38bdf8; color: #fff; padding: 8px; border-radius: 4px; flex-grow: 1; }
-        .btn { border: 1px solid #38bdf8; color: #38bdf8; background: transparent; padding: 8px 15px; cursor: pointer; }
+        html, body { height: 100%; margin: 0; padding: 0; overflow: hidden; background: #0b0f19; font-family: 'Segoe UI', sans-serif; }
+        .app-container { display: flex; flex-direction: column; height: 100vh; }
+        header { background: #1e293b; color: #38bdf8; padding: 10px 15px; border-bottom: 2px solid #38bdf8; display: flex; gap: 10px; align-items: center; font-size: 12px; z-index: 10; }
+        input, .btn { background: #0f172a; border: 1px solid #334155; color: #fff; padding: 5px 10px; border-radius: 4px; outline: none; }
+        .btn { border-color: #38bdf8; color: #38bdf8; cursor: pointer; text-transform: uppercase; font-weight: bold; font-size: 10px; }
+        .btn.danger { border-color: #ef4444; color: #ef4444; }
+        
+        .main-grid { display: flex; flex-grow: 1; min-height: 0; }
+        .view-panel { flex: 2; background: #000; position: relative; border-right: 1px solid #334155; cursor: crosshair; }
+        .log-panel { flex: 1; display: flex; flex-direction: column; background: #111827; }
+        #log { flex-grow: 1; overflow-y: auto; padding: 15px; font-family: 'Consolas', monospace; font-size: 11px; color: #22c55e; line-height: 1.4; }
+        
+        footer { background: #1e293b; padding: 10px 15px; border-top: 1px solid #334155; display: flex; gap: 10px; }
+        #chatInput { flex-grow: 1; border-color: #38bdf8; }
+
+        #panic { display: none; position: fixed; top:0; left:0; width:100%; height:100%; z-index: 9999; background: white; }
+        #feed { width: 100%; height: 100%; border: none; position: absolute; pointer-events: none; }
+        .click-shield { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 100; }
     </style>
 </head>
 <body>
-    <header>
-        <div><strong>NOAA GCOS</strong> | STATION: ANT-42</div>
-        <div id="status">SATELLITE LINK: READY</div>
-    </header>
-    <div class="grid">
-        <div class="panel"><iframe id="feed"></iframe></div>
-        <div class="panel"><div id="log">-- SYSTEM INITIALIZED --</div></div>
-    </div>
-    <div class="controls">
-        <input id="chatInput" placeholder="Enter transmission data...">
-        <button class="btn" onclick="sendData()">SEND</button>
-        <button class="btn" onclick="startLink()">SYNC</button>
+
+    <div id="panic"><iframe src="https://en.wikipedia.org" style="width:100%; height:100%; border:none;"></iframe></div>
+
+    <div class="app-container">
+        <header>
+            <div style="font-weight: bold; cursor: pointer;" onclick="document.getElementById('panic').style.display='block'">🛰️ GCOS-SYSTEM</div>
+            <input id="h" placeholder="Uplink" value="mc.sealcentral.co">
+            <input id="u" placeholder="ID" value="Researcher_JMO">
+            <button class="btn" onclick="connect()">Connect</button>
+            <button class="btn danger" onclick="socket.emit('leave')">Leave</button>
+        </header>
+
+        <div class="main-grid">
+            <div class="view-panel" id="mouseArea">
+                <iframe id="feed"></iframe>
+                <div class="click-shield"></div>
+            </div>
+            <div class="log-panel">
+                <div id="log">-- READY FOR TRANSMISSION --</div>
+            </div>
+        </div>
+
+        <footer>
+            <input id="chatInput" placeholder="Data string..." onkeydown="if(event.key==='Enter') transmit()">
+            <button class="btn" onclick="transmit()">Transmit</button>
+        </footer>
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
-        const socket = io();
-        // HIDDEN KEYWORDS (Base64) to bypass filter scanning
-        const _m = {
-            s: atob('c3RhcnRCb3Q='), // startBot
-            c: atob('c2VuZENoYXQ='), // sendChat
-            l: atob('bG9vaw=='),    // look
-            v: atob('Y29udHJvbA==')  // control
-        };
+        const socket = io({ transports: ['polling'] });
+        const keys = { 'w':'forward','s':'back','a':'left','d':'right',' ':'jump','Shift':'sneak' };
 
-        function startLink() {
-            socket.emit(_m.s, { host: 'mc.sealcentral.co', username: 'Researcher_JMO' });
-            setTimeout(() => { document.getElementById('feed').src = window.location.href.replace('8080', '3001'); }, 2000);
+        function connect() {
+            socket.emit('start', { h: document.getElementById('h').value, u: document.getElementById('u').value });
+            setTimeout(() => { document.getElementById('feed').src = window.location.href.replace('8080', '3001'); }, 3000);
         }
 
-        function sendData() {
-            const val = document.getElementById('chatInput').value;
-            if(val) { socket.emit(_m.c, val); document.getElementById('chatInput').value = ''; }
+        function transmit() {
+            const i = document.getElementById('chatInput');
+            if(i.value) { socket.emit('msg', i.value); i.value = ''; }
         }
 
-        // --- FIX: STOP SPACEBAR SCROLLING ---
-        window.addEventListener('keydown', (e) => {
-            if (e.key === ' ' && e.target === document.body) {
-                e.preventDefault(); // Prevents the page from jumping
-            }
-            if (keys[e.key]) socket.emit(_m.v, { key: keys[e.key], state: true });
-        }, false);
+        // --- Interaction & Spacebar Fix ---
+        document.getElementById('mouseArea').addEventListener('mousedown', e => {
+            e.preventDefault();
+            socket.emit('click', e.button === 0 ? 'primary' : 'secondary');
+        });
+        document.getElementById('mouseArea').addEventListener('contextmenu', e => e.preventDefault());
 
-        window.addEventListener('keyup', (e) => {
-            if (keys[e.key]) socket.emit(_m.v, { key: keys[e.key], state: false });
+        window.addEventListener('keydown', e => {
+            if(e.key === ' ' && e.target === document.body) e.preventDefault(); // Stop scroll
+            if(keys[e.key]) socket.emit('move', { k: keys[e.key], s: true });
+        });
+        window.addEventListener('keyup', e => {
+            if(keys[e.key]) socket.emit('move', { k: keys[e.key], s: false });
         });
 
-        const keys = { 'w':'forward','s':'back','a':'left','d':'right',' ':'jump' };
-        socket.on('log', m => { 
+        // --- Scrubber ---
+        socket.on('log', m => {
             const l = document.getElementById('log');
-            l.innerHTML += `<div>[TRNS] ${m.replace(/bot/gi,'Unit')}</div>`;
+            const clean = m.replace(/game/gi,'Cluster').replace(/player/gi,'Unit').replace(/server/gi,'Uplink');
+            l.innerHTML += `<div>[DATA] ${clean}</div>`;
             l.scrollTop = l.scrollHeight;
         });
     </script>
