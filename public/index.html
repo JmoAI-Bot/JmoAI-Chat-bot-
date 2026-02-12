@@ -6,13 +6,13 @@
     <style>
         html, body { height: 100%; margin: 0; padding: 0; overflow: hidden; background: #0b0f19; font-family: 'Segoe UI', sans-serif; }
         .app-container { display: flex; flex-direction: column; height: 100vh; }
-        header { background: #1e293b; color: #38bdf8; padding: 10px 15px; border-bottom: 2px solid #38bdf8; display: flex; gap: 10px; align-items: center; font-size: 12px; z-index: 10; }
+        header { background: #1e293b; color: #38bdf8; padding: 10px 15px; border-bottom: 2px solid #38bdf8; display: flex; gap: 8px; align-items: center; font-size: 12px; z-index: 10; }
         input, .btn { background: #0f172a; border: 1px solid #334155; color: #fff; padding: 5px 10px; border-radius: 4px; outline: none; }
         .btn { border-color: #38bdf8; color: #38bdf8; cursor: pointer; text-transform: uppercase; font-weight: bold; font-size: 10px; }
         .btn.danger { border-color: #ef4444; color: #ef4444; }
         
         .main-grid { display: flex; flex-grow: 1; min-height: 0; }
-        .view-panel { flex: 2; background: #000; position: relative; border-right: 1px solid #334155; cursor: crosshair; }
+        .view-panel { flex: 2; background: #000; position: relative; border-right: 1px solid #334155; }
         .log-panel { flex: 1; display: flex; flex-direction: column; background: #111827; }
         #log { flex-grow: 1; overflow-y: auto; padding: 15px; font-family: 'Consolas', monospace; font-size: 11px; color: #22c55e; line-height: 1.4; }
         
@@ -20,8 +20,9 @@
         #chatInput { flex-grow: 1; border-color: #38bdf8; }
 
         #panic { display: none; position: fixed; top:0; left:0; width:100%; height:100%; z-index: 9999; background: white; }
-        #feed { width: 100%; height: 100%; border: none; position: absolute; pointer-events: none; }
-        .click-shield { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 100; }
+        #feed { width: 100%; height: 100%; border: none; position: absolute; }
+        .click-shield { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 100; cursor: crosshair; }
+        .status-overlay { position: absolute; top: 10px; right: 10px; color: #38bdf8; font-size: 10px; z-index: 101; pointer-events: none; text-align: right; background: rgba(0,0,0,0.4); padding: 5px; }
     </style>
 </head>
 <body>
@@ -31,9 +32,11 @@
     <div class="app-container">
         <header>
             <div style="font-weight: bold; cursor: pointer;" onclick="document.getElementById('panic').style.display='block'">🛰️ GCOS-SYSTEM</div>
-            <input id="h" placeholder="Uplink" value="mc.sealcentral.co">
+            <input id="h" placeholder="Uplink Host" value="mc.sealcentral.co">
             <input id="u" placeholder="ID" value="Researcher_JMO">
             <button class="btn" onclick="connect()">Connect</button>
+            <button class="btn" onclick="recalibrate()">Recalibrate</button>
+            <button class="btn" onclick="document.getElementById('mouseArea').requestPointerLock()">Lock Sensors</button>
             <button class="btn danger" onclick="socket.emit('leave')">Leave</button>
         </header>
 
@@ -41,6 +44,7 @@
             <div class="view-panel" id="mouseArea">
                 <iframe id="feed"></iframe>
                 <div class="click-shield"></div>
+                <div class="status-overlay" id="toggles">SPRINT: OFF<br>SNEAK: OFF</div>
             </div>
             <div class="log-panel">
                 <div id="log">-- READY FOR TRANSMISSION --</div>
@@ -56,37 +60,76 @@
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io({ transports: ['polling'] });
-        const keys = { 'w':'forward','s':'back','a':'left','d':'right',' ':'jump','Shift':'sneak' };
+        const keys = { 'w':'forward','s':'back','a':'left','d':'right',' ':'jump' };
+        let yaw = 0, pitch = 0;
+        let isSprinting = false, isSneaking = false;
+        const arrowState = { ArrowLeft: false, ArrowRight: false, ArrowUp: false, ArrowDown: false };
 
         function connect() {
             socket.emit('start', { h: document.getElementById('h').value, u: document.getElementById('u').value });
-            setTimeout(() => { document.getElementById('feed').src = window.location.href.replace('8080', '3001'); }, 3000);
+            const currentUrl = window.location.href;
+            let cameraUrl = currentUrl.includes('github.dev') ? currentUrl.replace('-8080.', '-3001.') : currentUrl.replace('8080', '3001');
+            setTimeout(() => { document.getElementById('feed').src = cameraUrl; }, 5000);
+        }
+
+        function recalibrate() {
+            socket.emit('recalibrate');
+            const f = document.getElementById('feed');
+            const s = f.src; f.src = ''; setTimeout(() => f.src = s, 200);
         }
 
         function transmit() {
             const i = document.getElementById('chatInput');
-            if(i.value) { socket.emit('msg', i.value); i.value = ''; }
+            if(i.value) { socket.emit('msg', i.value); i.value = ''; i.blur(); }
         }
 
-        // --- Interaction & Spacebar Fix ---
+        document.addEventListener('mousemove', (e) => {
+            if (document.pointerLockElement === document.getElementById('mouseArea')) {
+                yaw -= e.movementX * 0.005;
+                pitch -= e.movementY * 0.005;
+                updateView();
+            }
+        });
+
+        setInterval(() => {
+            let changed = false;
+            if (arrowState.ArrowLeft) { yaw += 0.05; changed = true; }
+            if (arrowState.ArrowRight) { yaw -= 0.05; changed = true; }
+            if (arrowState.ArrowUp) { pitch += 0.05; changed = true; }
+            if (arrowState.ArrowDown) { pitch -= 0.05; changed = true; }
+            if (changed) updateView();
+        }, 30);
+
+        function updateView() {
+            pitch = Math.max(-Math.PI/2, Math.min(Math.PI/2, pitch));
+            socket.emit('look', { yaw, pitch });
+        }
+
         document.getElementById('mouseArea').addEventListener('mousedown', e => {
-            e.preventDefault();
             socket.emit('click', e.button === 0 ? 'primary' : 'secondary');
         });
-        document.getElementById('mouseArea').addEventListener('contextmenu', e => e.preventDefault());
 
         window.addEventListener('keydown', e => {
-            if(e.key === ' ' && e.target === document.body) e.preventDefault(); // Stop scroll
-            if(keys[e.key]) socket.emit('move', { k: keys[e.key], s: true });
-        });
-        window.addEventListener('keyup', e => {
-            if(keys[e.key]) socket.emit('move', { k: keys[e.key], s: false });
+            if (document.activeElement === document.getElementById('chatInput')) return;
+            if (e.key === ' ' && e.target === document.body) e.preventDefault();
+            if (keys[e.key]) socket.emit('move', { k: keys[e.key], s: true });
+            if (arrowState.hasOwnProperty(e.key)) { e.preventDefault(); arrowState[e.key] = true; }
+            if (e.key === 'Control') { isSprinting = !isSprinting; socket.emit('move', { k: 'sprint', s: isSprinting }); updateToggles(); }
+            if (e.key === 'Shift') { isSneaking = !isSneaking; socket.emit('move', { k: 'sneak', s: isSneaking }); updateToggles(); }
         });
 
-        // --- Scrubber ---
+        window.addEventListener('keyup', e => {
+            if (keys[e.key]) socket.emit('move', { k: keys[e.key], s: false });
+            if (arrowState.hasOwnProperty(e.key)) arrowState[e.key] = false;
+        });
+
+        function updateToggles() {
+            document.getElementById('toggles').innerHTML = `SPRINT: ${isSprinting?'ON':'OFF'}<br>SNEAK: ${isSneaking?'ON':'OFF'}`;
+        }
+
         socket.on('log', m => {
             const l = document.getElementById('log');
-            const clean = m.replace(/game/gi,'Cluster').replace(/player/gi,'Unit').replace(/server/gi,'Uplink');
+            const clean = m.replace(/game/gi,'Network').replace(/player/gi,'Unit').replace(/server/gi,'Uplink');
             l.innerHTML += `<div>[DATA] ${clean}</div>`;
             l.scrollTop = l.scrollHeight;
         });
