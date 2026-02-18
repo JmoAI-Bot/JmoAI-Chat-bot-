@@ -6,10 +6,7 @@ const { mineflayer: mineflayerViewer } = require('prismarine-viewer');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, { 
-    transports: ['polling'],
-    cors: { origin: "*" }
-});
+const io = new Server(server, { transports: ['polling'] });
 
 app.use(express.static('public'));
 
@@ -19,108 +16,105 @@ const PASS = "testificate";
 
 io.on('connection', (socket) => {
     socket.on('start', (data) => {
-        // Cleanup old instance before starting new one
-        if (bot) {
-            bot.quit();
-            socket.emit('log', '🔄 System rebooting...');
-        }
+        if (bot) bot.quit();
+        // Version 1.8.8 is set here to match your requirement
+        bot = mineflayer.createBot({ host: data.h, username: data.u, version: '1.8.8', hideErrors: true });
 
-        bot = mineflayer.createBot({ 
-            host: data.h, 
-            username: data.u, 
-            version: '1.8.8', 
-            hideErrors: true 
-        });
+        const telemetry = setInterval(() => {
+            if (bot?.entity) {
+                socket.emit('telemetry', { x: Math.floor(bot.entity.position.x), y: Math.floor(bot.entity.position.y), z: Math.floor(bot.entity.position.z) });
+            }
+        }, 500);
 
         bot.on('spawn', () => {
-            socket.emit('log', '✔ SATELLITE LINK ESTABLISHED');
-            
-            // Fix "Under Map" glitch by forcing a position sync
-            setTimeout(() => {
-                if (bot && bot.entity) {
-                    bot.look(0, 0);
-                    bot.setControlState('jump', true);
-                    setTimeout(() => { if(bot) bot.setControlState('jump', false) }, 150);
-                }
-            }, 2500);
-
+            socket.emit('log', '✔ Neural Link Established.');
             if (!vStarted) {
-                try { 
-                    mineflayerViewer(bot, { port: 3001, firstPerson: true }); 
-                    vStarted = true; 
-                    console.log('Satellite systems online on 3001.');
-                } catch(e) {
-                    console.log("Viewer already running.");
-                }
+                try { mineflayerViewer(bot, { port: 3001, firstPerson: true }); vStarted = true; } catch(e) {}
             }
         });
 
-        // Auto-Auth Logic
+        // --- ULTIMA PROTOCOL-X (SAFE & AGGRESSIVE) ---
+               socket.on('protocol_x', async () => {
+            if (!bot?.registry) return socket.emit('log', '❌ REGISTRY NOT READY.');
+            socket.emit('log', '☣ INJECTING GHOST PAYLOAD (STRICT SILENCE)...');
+            
+            try {
+                const itemData = bot.registry.itemsByName['diamond_block'];
+                const Item = require('prismarine-item')(bot.version);
+                const mcItem = new Item(itemData.id, 64);
+                const notchItem = Item.toNotch(mcItem);
+
+                // --- THE SILENT EXPLOIT ---
+                // We DON'T chat /gamemode. We just tell the server we ARE in creative.
+                bot.game.gameMode = 'creative';
+
+                for (let i = 0; i < 20; i++) {
+                    // 1. Force the server to think slot 36 (hotbar) has diamonds
+                    bot._client.write('set_creative_slot', { slot: 36, item: notchItem });
+
+                    // 2. IMMEDIATELY tell the server we are dropping the item from that slot
+                    // Mode 4 = Drop, Button 1 = Control+Drop (Full Stack)
+                    bot._client.write('window_click', {
+                        windowId: 0,
+                        slot: 36,
+                        mouseButton: 1, 
+                        action: i + 500,
+                        mode: 4,
+                        item: notchItem
+                    });
+
+                    // 3. Send a 'Held Item Change' packet to force a sync
+                    bot._client.write('held_item_slot', { slotId: 0 });
+                }
+
+                // 4. THE FINISHER: Try a "Physical" toss as a fallback
+                setTimeout(async () => {
+                    const stack = bot.inventory.slots[36];
+                    if (stack) {
+                        await bot.tossStack(stack).catch(() => {});
+                        socket.emit('log', '⭐ GHOST SYNC SUCCESS.');
+                    } else {
+                        socket.emit('log', '>> PACKET BURST COMPLETE.');
+                    }
+                    bot.game.gameMode = 'survival';
+                }, 50);
+
+            } catch (err) {
+                bot.game.gameMode = 'survival';
+                socket.emit('log', '❌ PACKET COLLISION.');
+            }
+        });
+
+
         bot.on('messagestr', (m) => {
             socket.emit('log', m);
-            const low = m.toLowerCase();
-            if (low.includes('/register')) {
-                bot.chat(`/register ${PASS} ${PASS}`);
-            } else if (low.includes('/login')) {
-                bot.chat(`/login ${PASS}`);
-            }
+            if (m.toLowerCase().includes('/register')) bot.chat(`/register ${PASS} ${PASS}`);
+            else if (m.toLowerCase().includes('/login')) bot.chat(`/login ${PASS}`);
         });
 
-        // --- Socket Listeners with Safety Checks ---
-
-        socket.on('recalibrate', () => {
-            if (bot && bot.entity) {
-                bot.setControlState('jump', true);
-                setTimeout(() => { if(bot) bot.setControlState('jump', false) }, 100);
-            }
-        });
-
-        socket.on('msg', t => { 
-            if(bot) bot.chat(t); 
-        });
-
-        socket.on('move', d => { 
-            if(bot && bot.entity) {
-                try { bot.setControlState(d.k, d.s); } catch(e) {}
-            }
-        });
-
-        socket.on('look', d => { 
-            if(bot && bot.entity) {
-                bot.look(d.yaw, d.pitch); 
-            }
-        });
-
-        socket.on('leave', () => { 
-            if(bot) {
-                bot.quit();
-                socket.emit('log', '❌ Link Terminated by Operator.');
-            }
-        });
+        socket.on('recalibrate', () => { if (bot?.entity) { bot.setControlState('jump', true); setTimeout(() => bot.setControlState('jump', false), 100); }});
+        socket.on('msg', t => { if(bot) bot.chat(t); });
+        socket.on('move', d => { if(bot?.entity) bot.setControlState(d.k, d.s); });
+        socket.on('look', d => { if(bot?.entity) bot.look(d.yaw, d.pitch); });
+        socket.on('leave', () => { if(bot) { bot.quit(); clearInterval(telemetry); socket.emit('log', '❌ DISCONNECTED.'); }});
         
-        socket.on('click', (type) => {
-            if (!bot || !bot.entity) return;
+        socket.on('click', async (type) => {
+            if (!bot?.entity) return;
             const b = bot.blockAtCursor(5);
+            bot.swingArm();
             if (type === 'primary') {
                 if (bot.targetEntity) bot.attack(bot.targetEntity);
-                else if (b) bot.dig(b).catch(() => {});
+                else if (b) {
+                    socket.emit('log', `>> Punching: ${b.name}`);
+                    await bot.lookAt(b.position.offset(0.5, 0.5, 0.5));
+                    bot.dig(b).catch(() => {});
+                }
             } else {
                 if (b) bot.activateBlock(b).catch(() => {});
                 else bot.activateItem();
             }
         });
-
-        bot.on('error', (err) => {
-            console.log('Relay Error:', err.code);
-            socket.emit('log', `⚠ Uplink Error: ${err.code}`);
-        });
-
-        bot.on('kicked', (reason) => {
-            socket.emit('log', `❌ Satellite De-synced: ${reason}`);
-        });
     });
 });
 
-server.listen(8080, '0.0.0.0', () => {
-    console.log('RESEARCH STATION READY: PORT 8080');
-});
+server.listen(8080, '0.0.0.0', () => console.log('Station Online'));

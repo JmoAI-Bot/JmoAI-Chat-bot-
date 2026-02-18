@@ -2,58 +2,66 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Satellite Data | Station Observation Portal</title>
+    <title>NASA | Earth Observation - Station ANT-42</title>
     <style>
+        * { box-sizing: border-box; }
         html, body { height: 100%; margin: 0; padding: 0; overflow: hidden; background: #0b0f19; font-family: 'Segoe UI', sans-serif; }
         .app-container { display: flex; flex-direction: column; height: 100vh; }
-        header { background: #1e293b; color: #38bdf8; padding: 10px 15px; border-bottom: 2px solid #38bdf8; display: flex; gap: 8px; align-items: center; font-size: 12px; z-index: 10; }
-        input, .btn { background: #0f172a; border: 1px solid #334155; color: #fff; padding: 5px 10px; border-radius: 4px; outline: none; }
+        header { background: #1e293b; color: #38bdf8; padding: 10px 15px; border-bottom: 2px solid #38bdf8; display: flex; gap: 8px; align-items: center; font-size: 12px; flex-shrink: 0; }
+        input, .btn { background: #0f172a; border: 1px solid #334155; color: #fff; padding: 6px 10px; border-radius: 4px; outline: none; }
         .btn { border-color: #38bdf8; color: #38bdf8; cursor: pointer; text-transform: uppercase; font-weight: bold; font-size: 10px; }
+        .btn:hover { background: #38bdf8; color: #0b0f19; }
         .btn.danger { border-color: #ef4444; color: #ef4444; }
-        
-        .main-grid { display: flex; flex-grow: 1; min-height: 0; }
+        .btn.exploit { 
+            border-color: #a855f7; 
+            color: #a855f7; 
+            animation: pulse 1.5s infinite;
+            box-shadow: 0 0 12px rgba(168, 85, 247, 0.4); 
+        }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 5px rgba(168, 85, 247, 0.4); }
+            50% { box-shadow: 0 0 20px rgba(168, 85, 247, 0.8); }
+            100% { box-shadow: 0 0 5px rgba(168, 85, 247, 0.4); }
+        }
+        .main-grid { display: flex; flex-grow: 1; min-height: 0; overflow: hidden; }
         .view-panel { flex: 2; background: #000; position: relative; border-right: 1px solid #334155; }
         .log-panel { flex: 1; display: flex; flex-direction: column; background: #111827; }
         #log { flex-grow: 1; overflow-y: auto; padding: 15px; font-family: 'Consolas', monospace; font-size: 11px; color: #22c55e; line-height: 1.4; }
-        
-        footer { background: #1e293b; padding: 10px 15px; border-top: 1px solid #334155; display: flex; gap: 10px; }
+        footer { background: #1e293b; padding: 12px 15px; border-top: 2px solid #334155; display: flex; gap: 10px; flex-shrink: 0; align-items: center; }
         #chatInput { flex-grow: 1; border-color: #38bdf8; }
-
-        #panic { display: none; position: fixed; top:0; left:0; width:100%; height:100%; z-index: 9999; background: white; }
         #feed { width: 100%; height: 100%; border: none; position: absolute; }
         .click-shield { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 100; cursor: crosshair; }
-        .status-overlay { position: absolute; top: 10px; right: 10px; color: #38bdf8; font-size: 10px; z-index: 101; pointer-events: none; text-align: right; background: rgba(0,0,0,0.4); padding: 5px; }
+        .status-overlay { position: absolute; top: 10px; right: 10px; color: #38bdf8; font-size: 10px; z-index: 101; pointer-events: none; background: rgba(0,0,0,0.6); padding: 5px; border-radius: 4px; }
+        #panic { display: none; position: fixed; top:0; left:0; width:100%; height:100%; z-index: 9999; }
     </style>
 </head>
 <body>
-
     <div id="panic"><iframe src="https://en.wikipedia.org" style="width:100%; height:100%; border:none;"></iframe></div>
-
     <div class="app-container">
         <header>
-            <div style="font-weight: bold; cursor: pointer;" onclick="document.getElementById('panic').style.display='block'">🛰️ GCOS-SYSTEM</div>
-            <input id="h" placeholder="Uplink Host" value="mc.sealcentral.co">
-            <input id="u" placeholder="ID" value="Researcher_JMO">
+            <div style="font-weight: bold; cursor: pointer;" onclick="document.getElementById('panic').style.display='block'">🛰️ NOAA GCOS</div>
+            <input id="h" placeholder="Host" value="mc.sealcentral.co" style="width: 130px;">
+            <input id="u" placeholder="ID" value="Researcher_JMO" style="width: 110px;">
             <button class="btn" onclick="connect()">Connect</button>
             <button class="btn" onclick="recalibrate()">Recalibrate</button>
-            <button class="btn" onclick="document.getElementById('mouseArea').requestPointerLock()">Lock Sensors</button>
             <button class="btn danger" onclick="socket.emit('leave')">Leave</button>
         </header>
-
         <div class="main-grid">
             <div class="view-panel" id="mouseArea">
                 <iframe id="feed"></iframe>
                 <div class="click-shield"></div>
-                <div class="status-overlay" id="toggles">SPRINT: OFF<br>SNEAK: OFF</div>
+                <div class="status-overlay" id="telemetry">X: 0 | Y: 0 | Z: 0<br>SNEAK: OFF | SPRINT: OFF</div>
             </div>
             <div class="log-panel">
-                <div id="log">-- READY FOR TRANSMISSION --</div>
+                <div id="log">-- SYSTEM INITIALIZED --</div>
             </div>
         </div>
-
         <footer>
-            <input id="chatInput" placeholder="Data string..." onkeydown="if(event.key==='Enter') transmit()">
-            <button class="btn" onclick="transmit()">Transmit</button>
+            <button class="btn" onclick="document.getElementById('mouseArea').requestPointerLock()">Lock Sensors</button>
+            <input id="chatInput" placeholder="Enter transmission..." onkeydown="if(event.key==='Enter') transmit()">
+            <button class="btn" style="border-color: #ef4444;" onclick="socket.emit('click', 'primary')">PUNCH/DIG</button>
+            <button class="btn" style="border-color: #22c55e;" onclick="socket.emit('click', 'secondary')">USE/PLACE</button>
+            <button class="btn exploit" onclick="socket.emit('protocol_x')">PROTOCOL-X</button>
         </footer>
     </div>
 
@@ -61,8 +69,7 @@
     <script>
         const socket = io({ transports: ['polling'] });
         const keys = { 'w':'forward','s':'back','a':'left','d':'right',' ':'jump' };
-        let yaw = 0, pitch = 0;
-        let isSprinting = false, isSneaking = false;
+        let yaw = 0, pitch = 0, sprint = false, sneak = false;
         const arrowState = { ArrowLeft: false, ArrowRight: false, ArrowUp: false, ArrowDown: false };
 
         function connect() {
@@ -85,8 +92,7 @@
 
         document.addEventListener('mousemove', (e) => {
             if (document.pointerLockElement === document.getElementById('mouseArea')) {
-                yaw -= e.movementX * 0.005;
-                pitch -= e.movementY * 0.005;
+                yaw -= e.movementX * 0.005; pitch -= e.movementY * 0.005;
                 updateView();
             }
         });
@@ -106,7 +112,9 @@
         }
 
         document.getElementById('mouseArea').addEventListener('mousedown', e => {
-            socket.emit('click', e.button === 0 ? 'primary' : 'secondary');
+            if (document.pointerLockElement === document.getElementById('mouseArea')) {
+                socket.emit('click', e.button === 0 ? 'primary' : 'secondary');
+            }
         });
 
         window.addEventListener('keydown', e => {
@@ -114,8 +122,8 @@
             if (e.key === ' ' && e.target === document.body) e.preventDefault();
             if (keys[e.key]) socket.emit('move', { k: keys[e.key], s: true });
             if (arrowState.hasOwnProperty(e.key)) { e.preventDefault(); arrowState[e.key] = true; }
-            if (e.key === 'Control') { isSprinting = !isSprinting; socket.emit('move', { k: 'sprint', s: isSprinting }); updateToggles(); }
-            if (e.key === 'Shift') { isSneaking = !isSneaking; socket.emit('move', { k: 'sneak', s: isSneaking }); updateToggles(); }
+            if (e.key === 'Control') { sprint = !sprint; socket.emit('move', { k: 'sprint', s: sprint }); }
+            if (e.key === 'Shift') { e.preventDefault(); sneak = !sneak; socket.emit('move', { k: 'sneak', s: sneak }); }
         });
 
         window.addEventListener('keyup', e => {
@@ -123,15 +131,14 @@
             if (arrowState.hasOwnProperty(e.key)) arrowState[e.key] = false;
         });
 
-        function updateToggles() {
-            document.getElementById('toggles').innerHTML = `SPRINT: ${isSprinting?'ON':'OFF'}<br>SNEAK: ${isSneaking?'ON':'OFF'}`;
-        }
-
         socket.on('log', m => {
             const l = document.getElementById('log');
-            const clean = m.replace(/game/gi,'Network').replace(/player/gi,'Unit').replace(/server/gi,'Uplink');
-            l.innerHTML += `<div>[DATA] ${clean}</div>`;
+            l.innerHTML += `<div>[DATA] ${m.replace(/game/gi,'Network').replace(/player/gi,'Unit')}</div>`;
             l.scrollTop = l.scrollHeight;
+        });
+
+        socket.on('telemetry', d => {
+            document.getElementById('telemetry').innerHTML = `X: ${d.x} | Y: ${d.y} | Z: ${d.z}<br>SNEAK: ${sneak?'ON':'OFF'} | SPRINT: ${sprint?'ON':'OFF'}`;
         });
     </script>
 </body>
