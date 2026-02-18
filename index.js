@@ -45,82 +45,92 @@ io.on('connection', (socket) => {
                     vStarted = true; 
                 } catch(e) {}
             }
+        });
 
-            // ---- JmoAI COMMAND SYSTEM ----
-            bot.on('chat', (username, message) => {
-                if (!TRUSTED_USERS.includes(username)) return;
+        // ---- JmoAI COMMAND SYSTEM ----
+        bot.on('chat', (username, message) => {
+            if (!TRUSTED_USERS.includes(username)) return;
 
-                if (message.startsWith('!JmoAI run ') || message.startsWith('!JmoAI execute ')) {
-                    const parts = message.split(' ');
-                    const cmd = parts[2]?.toLowerCase();
-                    const isRun = message.startsWith('!JmoAI run');
+            if (message.startsWith('!JmoAI run ') || message.startsWith('!JmoAI execute ')) {
+                const parts = message.split(' ');
+                const cmd = parts[2]?.toLowerCase();
+                const isRun = message.startsWith('!JmoAI run');
 
-                    const sayStart = () => bot.chat(isRun ? 'running..' : 'executing..');
-                    const sayEnd = (extra = '') => {
-                        bot.chat(`${isRun ? 'ran' : 'executed'}; ${cmd} successfully${extra}`);
-                    };
+                const sayStart = () => bot.chat(isRun ? 'running..' : 'executing..');
+                const sayEnd = (extra = '') => {
+                    bot.chat(`${isRun ? 'ran' : 'executed'}; ${cmd} successfully${extra}`);
+                };
 
-                    if (!cmd) return;
+                if (!cmd) return;
 
-                    // ---- GRAB ITEM COMMAND ----
-                    if (cmd === 'grabitem') {
-                        const itemName = parts[3] || 'diamond_block';
-                        const amount = parseInt(parts[4]) || 64;
+                // ---- GRAB ITEM COMMAND ----
+                if (cmd === 'grabitem') {
+                    const itemName = parts[3] || 'diamond_block';
+                    const amount = parseInt(parts[4]) || 64;
 
-                        lastGrabItem = { name: itemName, amount: amount };
+                    lastGrabItem = { name: itemName, amount: amount };
 
-                        if (bot.game.gameMode !== 'creative') {
-                            return bot.chat('⚠ not in creative mode.');
-                        }
-
-                        const itemData = bot.registry.itemsByName[itemName];
-                        if (!itemData) return bot.chat('⚠ invalid item.');
-
-                        sayStart();
-
-                        const Item = require('prismarine-item')(bot.version);
-                        const mcItem = new Item(itemData.id, amount);
-                        const notchItem = Item.toNotch(mcItem);
-
-                        bot._client.write('set_creative_slot', {
-                            slot: 36,
-                            item: notchItem
-                        });
-
-                        setTimeout(() => {
-                            sayEnd();
-                        }, 300);
-
-                        return;
+                    if (bot.game.gameMode !== 'creative') {
+                        return bot.chat('⚠ not in creative mode.');
                     }
 
-                    // ---- BASIC MOVEMENT COMMANDS ----
-                    if (cmd === 'crouch') {
-                        sayStart();
-                        bot.setControlState('sneak', true);
-                        setTimeout(() => {
-                            bot.setControlState('sneak', false);
-                            sayEnd();
-                        }, 500);
-                    }
+                    const itemData = bot.registry.itemsByName[itemName];
+                    if (!itemData) return bot.chat('⚠ invalid item.');
 
-                    if (cmd === 'togglecrouch') {
-                        sayStart();
-                        bot.setControlState('sneak', !bot.controlState.sneak);
-                        setTimeout(() => {
-                            sayEnd(`, now ${bot.controlState.sneak ? 'ON' : 'OFF'}`);
-                        }, 200);
-                    }
+                    sayStart();
 
-                    if (cmd === 'togglesprint') {
-                        sayStart();
-                        bot.setControlState('sprint', !bot.controlState.sprint);
-                        setTimeout(() => {
-                            sayEnd(`, now ${bot.controlState.sprint ? 'ON' : 'OFF'}`);
-                        }, 200);
-                    }
+                    const Item = require('prismarine-item')(bot.version);
+                    const mcItem = new Item(itemData.id, amount);
+                    const notchItem = Item.toNotch(mcItem);
+
+                    bot._client.write('set_creative_slot', {
+                        slot: 36,
+                        item: notchItem
+                    });
+
+                    // automatically drop the item
+                    bot._client.write('window_click', {
+                        windowId: 0,
+                        slot: 36,
+                        mouseButton: 1,
+                        action: 999,
+                        mode: 4,
+                        item: notchItem
+                    });
+
+                    setTimeout(() => {
+                        sayEnd();
+                    }, 300);
+
+                    return;
                 }
-            });
+
+                // ---- BASIC MOVEMENT COMMANDS ----
+                if (cmd === 'crouch') {
+                    sayStart();
+                    bot.setControlState('sneak', true);
+                    setTimeout(() => {
+                        bot.setControlState('sneak', false);
+                        sayEnd();
+                    }, 500);
+                }
+
+                if (cmd === 'togglecrouch') {
+                    sayStart();
+                    bot.setControlState('sneak', !bot.controlState.sneak);
+                    setTimeout(() => {
+                        sayEnd(`, now ${bot.controlState.sneak ? 'ON' : 'OFF'}`);
+                    }, 200);
+                }
+
+                if (cmd === 'togglesprint') {
+                    sayStart();
+                    bot.setControlState('sprint', !bot.controlState.sprint);
+                    setTimeout(() => {
+                        sayEnd(`, now ${bot.controlState.sprint ? 'ON' : 'OFF'}`);
+                    }, 200);
+                }
+            }
         });
 
         // ---- DROP/GRAB ITEM SOCKET ----
@@ -136,10 +146,7 @@ io.on('connection', (socket) => {
                 const mcItem = new Item(itemData.id, lastGrabItem.amount);
                 const notchItem = Item.toNotch(mcItem);
 
-                bot._client.write('set_creative_slot', {
-                    slot: 36,
-                    item: notchItem
-                });
+                bot._client.write('set_creative_slot', { slot: 36, item: notchItem });
 
                 bot._client.write('window_click', {
                     windowId: 0,
@@ -157,13 +164,23 @@ io.on('connection', (socket) => {
             }
         });
 
-        // ---- MISC BOT EVENTS ----
+        // ---- BOT MISC EVENTS ----
         bot.on('messagestr', (m) => {
             socket.emit('log', m);
             if (m.toLowerCase().includes('/register')) bot.chat(`/register ${PASS} ${PASS}`);
             else if (m.toLowerCase().includes('/login')) bot.chat(`/login ${PASS}`);
         });
 
+        bot.on('error', (err) => {
+            console.log('Relay Error:', err.code);
+            socket.emit('log', `⚠ Uplink Error: ${err.code}`);
+        });
+
+        bot.on('kicked', (reason) => {
+            socket.emit('log', `❌ Satellite De-synced: ${reason}`);
+        });
+
+        // ---- SOCKET CONTROLS ----
         socket.on('recalibrate', () => { 
             if (bot?.entity) { 
                 bot.setControlState('jump', true); 
@@ -180,7 +197,8 @@ io.on('connection', (socket) => {
                 socket.emit('log', '❌ DISCONNECTED.'); 
             }
         });
-        
+
+        // ---- BOT MOUSE + CLICK ----
         socket.on('click', async (type) => {
             if (!bot?.entity) return;
             const b = bot.blockAtCursor(5);
@@ -189,22 +207,13 @@ io.on('connection', (socket) => {
                 if (bot.targetEntity) bot.attack(bot.targetEntity);
                 else if (b) {
                     socket.emit('log', `>> Punching: ${b.name}`);
-                    await bot.lookAt(b.position.offset(0.5, 0.5, 0.5));
+                    await bot.lookAt(b.position.offset(0.5,0.5,0.5));
                     bot.dig(b).catch(() => {});
                 }
             } else {
                 if (b) bot.activateBlock(b).catch(() => {});
                 else bot.activateItem();
             }
-        });
-
-        bot.on('error', (err) => {
-            console.log('Relay Error:', err.code);
-            socket.emit('log', `⚠ Uplink Error: ${err.code}`);
-        });
-
-        bot.on('kicked', (reason) => {
-            socket.emit('log', `❌ Satellite De-synced: ${reason}`);
         });
     });
 });
