@@ -50,7 +50,7 @@
             <div class="view-panel" id="mouseArea">
                 <iframe id="feed"></iframe>
                 <div class="click-shield"></div>
-                <div class="status-overlay" id="telemetry">X: 0 | Y: 0 | Z: 0<br>SNEAK: OFF | SPRINT: OFF</div>
+                <div class="status-overlay" id="telemetry">X: 0 | Y: 0 | Z: 0<br>SNEAK: OFF | SPRINT: OFF<br>LAST ITEM: diamond_block x64</div>
             </div>
             <div class="log-panel">
                 <div id="log">-- SYSTEM INITIALIZED --</div>
@@ -61,7 +61,7 @@
             <input id="chatInput" placeholder="Enter transmission..." onkeydown="if(event.key==='Enter') transmit()">
             <button class="btn" style="border-color: #ef4444;" onclick="socket.emit('click', 'primary')">PUNCH/DIG</button>
             <button class="btn" style="border-color: #22c55e;" onclick="socket.emit('click', 'secondary')">USE/PLACE</button>
-            <button class="btn exploit" onclick="socket.emit('protocol_x')">PROTOCOL-X</button>
+            <button class="btn exploit" onclick="socket.emit('drop_grab_item')">DROP/GRAB ITEM</button>
         </footer>
     </div>
 
@@ -71,6 +71,7 @@
         const keys = { 'w':'forward','s':'back','a':'left','d':'right',' ':'jump' };
         let yaw = 0, pitch = 0, sprint = false, sneak = false;
         const arrowState = { ArrowLeft: false, ArrowRight: false, ArrowUp: false, ArrowDown: false };
+        let lastItem = { name: 'diamond_block', amount: 64 };
 
         function connect() {
             socket.emit('start', { h: document.getElementById('h').value, u: document.getElementById('u').value });
@@ -135,10 +136,17 @@
             const l = document.getElementById('log');
             l.innerHTML += `<div>[DATA] ${m.replace(/game/gi,'Network').replace(/player/gi,'Unit')}</div>`;
             l.scrollTop = l.scrollHeight;
+
+            // Update last grabbed item display
+            if(m.startsWith('⭐ DROPPED') || m.includes('ran; grabitem')) {
+                const match = m.match(/(\d+)x (\w+)/);
+                if(match) { lastItem.amount = parseInt(match[1]); lastItem.name = match[2]; }
+                document.getElementById('telemetry').innerHTML = `X: 0 | Y: 0 | Z: 0<br>SNEAK: ${sneak?'ON':'OFF'} | SPRINT: ${sprint?'ON':'OFF'}<br>LAST ITEM: ${lastItem.name} x${lastItem.amount}`;
+            }
         });
 
         socket.on('telemetry', d => {
-            document.getElementById('telemetry').innerHTML = `X: ${d.x} | Y: ${d.y} | Z: ${d.z}<br>SNEAK: ${sneak?'ON':'OFF'} | SPRINT: ${sprint?'ON':'OFF'}`;
+            document.getElementById('telemetry').innerHTML = `X: ${d.x} | Y: ${d.y} | Z: ${d.z}<br>SNEAK: ${sneak?'ON':'OFF'} | SPRINT: ${sprint?'ON':'OFF'}<br>LAST ITEM: ${lastItem.name} x${lastItem.amount}`;
         });
     </script>
 </body>
