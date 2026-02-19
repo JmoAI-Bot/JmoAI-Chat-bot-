@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>NASA | Earth Observation - Station ANT-42</title>
+    <script src="https://cdn.jsdelivr.net/npm/profanity-cleaner@0.0.3/dist/profanity-cleaner.min.js"></script>
     <style>
         * { box-sizing: border-box; }
         html, body { height: 100%; margin: 0; padding: 0; overflow: hidden; background: #0b0f19; font-family: 'Segoe UI', sans-serif; }
@@ -41,7 +42,10 @@
         <header>
             <div style="font-weight: bold; cursor: pointer;" onclick="document.getElementById('panic').style.display='block'">🛰️ NOAA GCOS</div>
             <input id="h" placeholder="Host" value="mc.sealcentral.co" style="width: 130px;">
-            <input id="u" placeholder="ID" value="Researcher_JMO" style="width: 110px;">
+            <input id="u" placeholder="ID" value="JmoAI_v5" style="width: 110px;">
+                <!-- auth/password/version UI removed — client will connect on 1.12.2 by default -->
+                <label style="font-size:11px;color:#38bdf8"><input id="tryAll" type="checkbox" style="display:none;"> Try all versions</label>
+                <input id="ver" type="hidden" value="1.12.2">
             <button class="btn" onclick="connect()">Connect</button>
             <button class="btn" onclick="recalibrate()">Recalibrate</button>
             <button class="btn danger" onclick="socket.emit('leave')">Leave</button>
@@ -67,87 +71,143 @@
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
-        const socket = io({ transports: ['polling'] });
-        const keys = { 'w':'forward','s':'back','a':'left','d':'right',' ':'jump' };
-        let yaw = 0, pitch = 0, sprint = false, sneak = false;
-        const arrowState = { ArrowLeft: false, ArrowRight: false, ArrowUp: false, ArrowDown: false };
-        let lastItem = { name: 'diamond_block', amount: 64 };
+const socket = io({ transports: ['polling'] });
+const keys = { 'w':'forward','s':'back','a':'left','d':'right',' ':'jump' };
+let yaw = 0, pitch = 0, sprint = false, sneak = false;
+const arrowState = { ArrowLeft: false, ArrowRight: false, ArrowUp: false, ArrowDown: false };
+let lastItem = { name: 'diamond_block', amount: 64 };
 
-        function connect() {
-            socket.emit('start', { h: document.getElementById('h').value, u: document.getElementById('u').value });
-            const currentUrl = window.location.href;
-            let cameraUrl = currentUrl.includes('github.dev') ? currentUrl.replace('-8080.', '-3001.') : currentUrl.replace('8080', '3001');
-            setTimeout(() => { document.getElementById('feed').src = cameraUrl; }, 5000);
+// --- SCRUBBER CONFIGURATION ---
+// Add any specific self-harm words or slurs here
+const customBadWords = ['suicide', 'drugs', 'violence']; 
+
+function connect() {
+    const payload = {
+        h: document.getElementById('h').value,
+        u: document.getElementById('u').value,
+        version: document.getElementById('ver').value,
+        tryAll: document.getElementById('tryAll').checked
+    };
+    socket.emit('start', payload);
+
+    const computeCameraUrl = () => {
+        const origin = window.location.origin;
+        if (origin.includes('-8080.')) return origin.replace('-8080.', '-3001.');
+        if (origin.includes(':8080')) return origin.replace(':8080', ':3001');
+        return `${location.protocol}//${location.hostname}:3001`;
+    };
+
+    const cameraUrl = computeCameraUrl();
+    setTimeout(() => { document.getElementById('feed').src = cameraUrl; }, 2000);
+}
+
+socket.on('connect', () => {
+    const l = document.getElementById('log');
+    l.innerHTML += `<div>[SYSTEM] Socket connected (${socket.id})</div>`;
+    l.scrollTop = l.scrollHeight;
+});
+
+socket.on('disconnect', (reason) => {
+    const l = document.getElementById('log');
+    l.innerHTML += `<div>[SYSTEM] Socket disconnected: ${reason}</div>`;
+    l.scrollTop = l.scrollHeight;
+});
+
+function recalibrate() {
+    socket.emit('recalibrate');
+    const f = document.getElementById('feed');
+    const s = f.src; f.src = ''; setTimeout(() => f.src = s, 200);
+}
+
+function transmit() {
+    const i = document.getElementById('chatInput');
+    if(i.value) { socket.emit('msg', i.value); i.value = ''; i.blur(); }
+}
+
+// --- MAIN LOG LISTENER WITH SCRUBBER ---
+socket.on('log', m => {
+    const l = document.getElementById('log');
+    
+    // 1. Initial terminology replacements
+    let cleanMessage = m.replace(/game/gi, 'Network').replace(/player/gi, 'Unit');
+
+    // 2. Comprehensive Scrub (Slurs, Curse words, Self-harm)
+    cleanMessage = profanityCleaner.clean(cleanMessage, { 
+        customBadWords: customBadWords,
+        placeholder: '*' 
+    });
+
+    // 3. UI Display (Using textContent for safety)
+    const div = document.createElement('div');
+    div.textContent = `[DATA] ${cleanMessage}`;
+    l.appendChild(div);
+    l.scrollTop = l.scrollHeight;
+
+    // 4. Update last grabbed item display
+    if(m.startsWith('⭐ DROPPED') || m.includes('ran; grabitem')) {
+        const match = m.match(/(\d+)x (\w+)/);
+        if(match) { 
+            lastItem.amount = parseInt(match[1]); 
+            lastItem.name = match[2]; 
         }
+        updateTelemetryDisplay(0, 0, 0); // Temporary update for items
+    }
+});
 
-        function recalibrate() {
-            socket.emit('recalibrate');
-            const f = document.getElementById('feed');
-            const s = f.src; f.src = ''; setTimeout(() => f.src = s, 200);
-        }
+// --- TELEMETRY ---
+socket.on('telemetry', d => {
+    updateTelemetryDisplay(d.x, d.y, d.z);
+});
 
-        function transmit() {
-            const i = document.getElementById('chatInput');
-            if(i.value) { socket.emit('msg', i.value); i.value = ''; i.blur(); }
-        }
+function updateTelemetryDisplay(x, y, z) {
+    document.getElementById('telemetry').innerHTML = 
+        `X: ${x} | Y: ${y} | Z: ${z}<br>` +
+        `SNEAK: ${sneak ? 'ON' : 'OFF'} | SPRINT: ${sprint ? 'ON' : 'OFF'}<br>` +
+        `LAST ITEM: ${lastItem.name} x${lastItem.amount}`;
+}
 
-        document.addEventListener('mousemove', (e) => {
-            if (document.pointerLockElement === document.getElementById('mouseArea')) {
-                yaw -= e.movementX * 0.005; pitch -= e.movementY * 0.005;
-                updateView();
-            }
-        });
+// --- CONTROLS & MOVEMENT ---
+document.addEventListener('mousemove', (e) => {
+    if (document.pointerLockElement === document.getElementById('mouseArea')) {
+        yaw -= e.movementX * 0.005; pitch -= e.movementY * 0.005;
+        updateView();
+    }
+});
 
-        setInterval(() => {
-            let changed = false;
-            if (arrowState.ArrowLeft) { yaw += 0.05; changed = true; }
-            if (arrowState.ArrowRight) { yaw -= 0.05; changed = true; }
-            if (arrowState.ArrowUp) { pitch += 0.05; changed = true; }
-            if (arrowState.ArrowDown) { pitch -= 0.05; changed = true; }
-            if (changed) updateView();
-        }, 30);
+setInterval(() => {
+    let changed = false;
+    if (arrowState.ArrowLeft) { yaw += 0.05; changed = true; }
+    if (arrowState.ArrowRight) { yaw -= 0.05; changed = true; }
+    if (arrowState.ArrowUp) { pitch += 0.05; changed = true; }
+    if (arrowState.ArrowDown) { pitch -= 0.05; changed = true; }
+    if (changed) updateView();
+}, 30);
 
-        function updateView() {
-            pitch = Math.max(-Math.PI/2, Math.min(Math.PI/2, pitch));
-            socket.emit('look', { yaw, pitch });
-        }
+function updateView() {
+    pitch = Math.max(-Math.PI/2, Math.min(Math.PI/2, pitch));
+    socket.emit('look', { yaw, pitch });
+}
 
-        document.getElementById('mouseArea').addEventListener('mousedown', e => {
-            if (document.pointerLockElement === document.getElementById('mouseArea')) {
-                socket.emit('click', e.button === 0 ? 'primary' : 'secondary');
-            }
-        });
+document.getElementById('mouseArea').addEventListener('mousedown', e => {
+    if (document.pointerLockElement === document.getElementById('mouseArea')) {
+        socket.emit('click', e.button === 0 ? 'primary' : 'secondary');
+    }
+});
 
-        window.addEventListener('keydown', e => {
-            if (document.activeElement === document.getElementById('chatInput')) return;
-            if (e.key === ' ' && e.target === document.body) e.preventDefault();
-            if (keys[e.key]) socket.emit('move', { k: keys[e.key], s: true });
-            if (arrowState.hasOwnProperty(e.key)) { e.preventDefault(); arrowState[e.key] = true; }
-            if (e.key === 'Control') { sprint = !sprint; socket.emit('move', { k: 'sprint', s: sprint }); }
-            if (e.key === 'Shift') { e.preventDefault(); sneak = !sneak; socket.emit('move', { k: 'sneak', s: sneak }); }
-        });
+window.addEventListener('keydown', e => {
+    if (document.activeElement === document.getElementById('chatInput')) return;
+    if (e.key === ' ' && e.target === document.body) e.preventDefault();
+    if (keys[e.key]) socket.emit('move', { k: keys[e.key], s: true });
+    if (arrowState.hasOwnProperty(e.key)) { e.preventDefault(); arrowState[e.key] = true; }
+    if (e.key === 'Control') { sprint = !sprint; socket.emit('move', { k: 'sprint', s: sprint }); }
+    if (e.key === 'Shift') { e.preventDefault(); sneak = !sneak; socket.emit('move', { k: 'sneak', s: sneak }); }
+});
 
-        window.addEventListener('keyup', e => {
-            if (keys[e.key]) socket.emit('move', { k: keys[e.key], s: false });
-            if (arrowState.hasOwnProperty(e.key)) arrowState[e.key] = false;
-        });
+window.addEventListener('keyup', e => {
+    if (keys[e.key]) socket.emit('move', { k: keys[e.key], s: false });
+    if (arrowState.hasOwnProperty(e.key)) arrowState[e.key] = false;
+});
 
-        socket.on('log', m => {
-            const l = document.getElementById('log');
-            l.innerHTML += `<div>[DATA] ${m.replace(/game/gi,'Network').replace(/player/gi,'Unit')}</div>`;
-            l.scrollTop = l.scrollHeight;
-
-            // Update last grabbed item display
-            if(m.startsWith('⭐ DROPPED') || m.includes('ran; grabitem')) {
-                const match = m.match(/(\d+)x (\w+)/);
-                if(match) { lastItem.amount = parseInt(match[1]); lastItem.name = match[2]; }
-                document.getElementById('telemetry').innerHTML = `X: 0 | Y: 0 | Z: 0<br>SNEAK: ${sneak?'ON':'OFF'} | SPRINT: ${sprint?'ON':'OFF'}<br>LAST ITEM: ${lastItem.name} x${lastItem.amount}`;
-            }
-        });
-
-        socket.on('telemetry', d => {
-            document.getElementById('telemetry').innerHTML = `X: ${d.x} | Y: ${d.y} | Z: ${d.z}<br>SNEAK: ${sneak?'ON':'OFF'} | SPRINT: ${sprint?'ON':'OFF'}<br>LAST ITEM: ${lastItem.name} x${lastItem.amount}`;
-        });
     </script>
 </body>
 </html>
