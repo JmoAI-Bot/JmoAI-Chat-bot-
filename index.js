@@ -211,7 +211,7 @@ io.on('connection', (socket) => {
 
       // chat forwarding and commands
       bot.on('chat', async (username, message) => {
-        try { socket.emit('log', `[CHAT] ${username}: ${message}`); } catch(e) {}
+        try { socket.emit('log', `${username}: ${message}`); } catch(e) {}
         if (!TRUSTED_USERS.includes(username)) return;
 
         // commands (minimal set preserved) - delegate to a handler for readability
